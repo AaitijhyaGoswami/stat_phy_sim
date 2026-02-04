@@ -1,7 +1,6 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
-from math import comb
 
 st.set_page_config(layout="wide")
 st.title("Galton Board — Central Limit Theorem")
@@ -17,6 +16,7 @@ with st.sidebar:
     N_LAYERS = st.slider("Peg Rows", 6, 30, 15)
     N_BALLS = st.slider("Number of Balls", 100, 20000, 5000, step=500)
     bias = st.slider("Right Step Probability", 0.0, 1.0, 0.5)
+    N_BINS = st.slider("Histogram Bin Density", 20, 300, 120)
     run = st.button("Run Simulation")
 
 # ---------------- Simulation ----------------
@@ -80,23 +80,23 @@ if run:
     st.plotly_chart(fig_board, use_container_width=True)
 
     # ---------------- Dense Histogram + Gaussian ----------------
-    hist_y, hist_x = np.histogram(positions, bins=60)
+    hist_y, hist_x = np.histogram(positions, bins=N_BINS)
     hist_centers = (hist_x[:-1] + hist_x[1:]) / 2
 
     mu = np.mean(positions)
     sigma = np.std(positions)
 
-    x_cont = np.linspace(hist_centers.min(), hist_centers.max(), 300)
+    x_cont = np.linspace(hist_centers.min(), hist_centers.max(), 400)
     gauss = (1/(sigma*np.sqrt(2*np.pi))) * np.exp(-(x_cont-mu)**2/(2*sigma**2))
     gauss = gauss / gauss.max() * hist_y.max()
 
     fig_hist = go.Figure()
-    fig_hist.add_bar(x=hist_centers, y=hist_y, name="Observed (dense)", opacity=0.7)
+    fig_hist.add_bar(x=hist_centers, y=hist_y, name="Observed", opacity=0.7)
     fig_hist.add_scatter(x=x_cont, y=gauss, mode="lines",
-                         name="Gaussian fit", line=dict(color="red", width=3))
+                         name="Gaussian Fit", line=dict(color="red", width=3))
 
     fig_hist.update_layout(
-        title="Final Bin Distribution",
+        title="Final Bin Distribution (Dense)",
         xaxis_title="Final Position",
         yaxis_title="Count",
         height=400
