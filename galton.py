@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import altair as alt
 import time
-from math import comb, sqrt, pi, exp
+from math import comb
 
 st.set_page_config(layout="wide")
 st.title("Galton Board — Central Limit Theorem")
@@ -18,7 +18,7 @@ converges to a **Gaussian**.
 with st.sidebar:
     st.header("Controls")
     N_LAYERS = st.slider("Peg Layers", 10, 50, 25)
-    N_COLS = st.slider("Columns (Width)", 10, 80, 40)
+    N_COLS = st.slider("Columns (Width)", 20, 100, 60)
     BALLS = st.slider("Balls per Burst", 10, 500, 100)
     bias = st.slider("Right Step Probability", 0.0, 1.0, 0.5)
     speed = st.slider("Animation Speed", 0.005, 0.1, 0.03)
@@ -27,6 +27,16 @@ with st.sidebar:
         st.session_state.initialized = False
         st.rerun()
 
+# ---------------- Utilities ----------------
+def upscale(img, factor=6):
+    return np.kron(img, np.ones((factor, factor, 1)))
+
+def theoretical_curve(n, p):
+    xs = np.arange(n+1)
+    probs = np.array([comb(n, k)*(p**k)*((1-p)**(n-k)) for k in xs])
+    return xs, probs / probs.max()
+
+# ---------------- Init ----------------
 if "initialized" not in st.session_state:
     st.session_state.initialized = False
 
@@ -44,12 +54,6 @@ board_ph = col_board.empty()
 hist_ph = col_hist.empty()
 
 run = st.toggle("Drop Balls")
-
-# ---------------- Helper ----------------
-def theoretical_curve(n, p):
-    xs = np.arange(n+1)
-    probs = np.array([comb(n, k)*(p**k)*((1-p)**(n-k)) for k in xs])
-    return xs, probs / probs.max()
 
 # ---------------- Simulation ----------------
 if run:
@@ -90,7 +94,7 @@ if run:
                 if 0 <= py < H and 0 <= px < W:
                     fig[py, px] = [1, 0.3, 0.3]
 
-        board_ph.image(fig, clamp=True)
+        board_ph.image(upscale(fig, 6), clamp=True)
 
         # ----- Histogram + theory -----
         xs = np.arange(len(st.session_state.bins))
@@ -99,7 +103,10 @@ if run:
         theo_x, theo = theoretical_curve(N_LAYERS, bias)
         theo = theo * df["Count"].max()
 
-        df_theo = pd.DataFrame({"Bin": theo_x + xs.mean() - theo_x.mean(), "Count": theo})
+        df_theo = pd.DataFrame({
+            "Bin": theo_x + xs.mean() - theo_x.mean(),
+            "Count": theo
+        })
 
         bars = alt.Chart(df).mark_bar(color="#6699cc").encode(
             x="Bin:O", y="Count"
@@ -109,6 +116,9 @@ if run:
             x="Bin:O", y="Count"
         )
 
-        hist_ph.altair_chart((bars + line).properties(title="Final Bin Distribution"), use_container_width=True)
+        hist_ph.altair_chart(
+            (bars + line).properties(title="Final Bin Distribution"),
+            use_container_width=True
+        )
 
         time.sleep(speed)
