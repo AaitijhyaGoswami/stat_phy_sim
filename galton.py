@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
+from math import comb
 
 st.set_page_config(layout="wide")
 st.title("Galton Board — Central Limit Theorem")
@@ -16,8 +17,6 @@ with st.sidebar:
     N_LAYERS = st.slider("Peg Rows", 6, 30, 15)
     N_BALLS = st.slider("Number of Balls", 100, 20000, 5000, step=500)
     bias = st.slider("Right Step Probability", 0.0, 1.0, 0.5)
-    N_BINS = st.slider("Histogram Bin Density", 20, 300, 120)
-    SCALE = st.slider("Bar Spacing Scale", 0.05, 1.0, 0.25)
     run = st.button("Run Simulation")
 
 # ---------------- Simulation ----------------
@@ -43,7 +42,12 @@ if run:
         positions.append(x)
         paths.append((path_x, path_y))
 
-    positions = np.array(positions)
+    # bins
+    bins = np.zeros(N_LAYERS+1)
+    for p in positions:
+        idx = int(round(p + N_LAYERS/2))
+        if 0 <= idx < len(bins):
+            bins[idx] += 1
 
     # ---------------- Peg Geometry ----------------
     peg_x, peg_y = [], []
@@ -62,7 +66,7 @@ if run:
         name="Pegs"
     ))
 
-    # draw last 200 paths for clarity
+    # draw only last 200 paths for clarity
     for px, py in paths[-200:]:
         fig_board.add_trace(go.Scatter(
             x=px, y=py,
@@ -80,27 +84,20 @@ if run:
 
     st.plotly_chart(fig_board, use_container_width=True)
 
-    # ---------------- Dense Histogram + Gaussian ----------------
-    scaled_pos = positions * SCALE
-
-    hist_y, hist_x = np.histogram(scaled_pos, bins=N_BINS)
-    hist_centers = (hist_x[:-1] + hist_x[1:]) / 2
-
-    mu = np.mean(scaled_pos)
-    sigma = np.std(scaled_pos)
-
-    x_cont = np.linspace(hist_centers.min(), hist_centers.max(), 400)
-    gauss = (1/(sigma*np.sqrt(2*np.pi))) * np.exp(-(x_cont-mu)**2/(2*sigma**2))
-    gauss = gauss / gauss.max() * hist_y.max()
+    # ---------------- Histogram + Theory ----------------
+    k = np.arange(len(bins))
+    theo = np.array([comb(N_LAYERS, i)*(bias**i)*((1-bias)**(N_LAYERS-i)) for i in k])
+    theo = theo / theo.max() * max(bins)
 
     fig_hist = go.Figure()
-    fig_hist.add_bar(x=hist_centers, y=hist_y, name="Observed", opacity=0.7)
-    fig_hist.add_scatter(x=x_cont, y=gauss, mode="lines",
-                         name="Gaussian Fit", line=dict(color="red", width=3))
+    fig_hist.add_bar(x=k, y=bins, name="Observed")
+    fig_hist.add_scatter(x=k, y=theo, mode="lines",
+                         name="Binomial / Gaussian",
+                         line=dict(color="red"))
 
     fig_hist.update_layout(
-        title="Final Bin Distribution (Smoothed)",
-        xaxis_title="Final Position (scaled)",
+        title="Final Bin Distribution",
+        xaxis_title="Bin",
         yaxis_title="Count",
         height=400
     )
