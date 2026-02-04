@@ -17,6 +17,7 @@ with st.sidebar:
     N_BALLS = st.slider("Number of Balls", 100, 20000, 5000, step=500)
     bias = st.slider("Right Step Probability", 0.0, 1.0, 0.5)
     N_BINS = st.slider("Histogram Bin Density", 20, 300, 120)
+    SCALE = st.slider("Bar Spacing Scale", 0.05, 1.0, 0.25)
     run = st.button("Run Simulation")
 
 # ---------------- Simulation ----------------
@@ -80,11 +81,13 @@ if run:
     st.plotly_chart(fig_board, use_container_width=True)
 
     # ---------------- Dense Histogram + Gaussian ----------------
-    hist_y, hist_x = np.histogram(positions, bins=N_BINS)
+    scaled_pos = positions * SCALE
+
+    hist_y, hist_x = np.histogram(scaled_pos, bins=N_BINS)
     hist_centers = (hist_x[:-1] + hist_x[1:]) / 2
 
-    mu = np.mean(positions)
-    sigma = np.std(positions)
+    mu = np.mean(scaled_pos)
+    sigma = np.std(scaled_pos)
 
     x_cont = np.linspace(hist_centers.min(), hist_centers.max(), 400)
     gauss = (1/(sigma*np.sqrt(2*np.pi))) * np.exp(-(x_cont-mu)**2/(2*sigma**2))
@@ -96,8 +99,8 @@ if run:
                          name="Gaussian Fit", line=dict(color="red", width=3))
 
     fig_hist.update_layout(
-        title="Final Bin Distribution (Dense)",
-        xaxis_title="Final Position",
+        title="Final Bin Distribution (Smoothed)",
+        xaxis_title="Final Position (scaled)",
         yaxis_title="Count",
         height=400
     )
