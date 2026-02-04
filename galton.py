@@ -3,108 +3,91 @@ import numpy as np
 import pandas as pd
 import altair as alt
 import time
-from math import comb
+from math import comb, sqrt, pi, exp
 
 st.set_page_config(layout="wide")
 st.title("Galton Board — Central Limit Theorem")
 
 st.markdown("""
-Each ball undergoes left/right decisions at pegs.  
-As the number of layers increases, the final distribution  
-converges to a **Gaussian**.
+Each row is a Bernoulli trial.  
+Each ball makes a left/right choice at every peg.  
+The accumulation of many trials converges to a **Gaussian**.
 """)
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
     st.header("Controls")
-    N_LAYERS = st.slider("Peg Layers", 10, 50, 25)
-    N_COLS = st.slider("Columns (Width)", 20, 100, 60)
-    BALLS = st.slider("Balls per Burst", 10, 500, 100)
-    bias = st.slider("Right Step Probability", 0.0, 1.0, 0.5)
-    speed = st.slider("Animation Speed", 0.005, 0.1, 0.03)
+    N_LAYERS = st.slider("Number of Peg Rows", 10, 60, 30)
+    N_BALLS = st.slider("Balls per Batch", 10, 300, 100)
+    bias = st.slider("Right Step Probability p", 0.0, 1.0, 0.5)
+    speed = st.slider("Animation Speed", 0.01, 0.15, 0.04)
 
     if st.button("Reset"):
-        st.session_state.initialized = False
+        st.session_state.init = False
         st.rerun()
 
-# ---------------- Utilities ----------------
-def upscale(img, factor=6):
-    return np.kron(img, np.ones((factor, factor, 1)))
-
-def theoretical_curve(n, p):
-    xs = np.arange(n+1)
-    probs = np.array([comb(n, k)*(p**k)*((1-p)**(n-k)) for k in xs])
-    return xs, probs / probs.max()
-
 # ---------------- Init ----------------
-if "initialized" not in st.session_state:
-    st.session_state.initialized = False
+if "init" not in st.session_state:
+    st.session_state.init = False
 
 def reset():
-    st.session_state.paths = []
-    st.session_state.bins = np.zeros(N_LAYERS+1, dtype=int)
-    st.session_state.initialized = True
+    st.session_state.active = []
+    st.session_state.bins = np.zeros(N_LAYERS + 1, dtype=int)
+    st.session_state.init = True
 
-if not st.session_state.initialized:
+if not st.session_state.init:
     reset()
 
 # ---------------- Layout ----------------
-col_board, col_hist = st.columns([1.2, 1])
+col_board, col_hist = st.columns([1.4, 1])
 board_ph = col_board.empty()
 hist_ph = col_hist.empty()
 
 run = st.toggle("Drop Balls")
 
+# ---------------- Theory ----------------
+def binomial_curve(n, p):
+    k = np.arange(n+1)
+    probs = np.array([comb(n, i)*(p**i)*((1-p)**(n-i)) for i in k])
+    return k, probs / probs.max()
+
 # ---------------- Simulation ----------------
 if run:
-    for _ in range(BALLS):
-        x = N_COLS // 2
-        y = 0
-        path = [(x, y)]
+    for _ in range(N_BALLS):
+        pos = N_LAYERS // 2
+        path = [pos]
 
-        for layer in range(N_LAYERS):
-            if np.random.rand() < bias:
-                x += 1
-            else:
-                x -= 1
-            y += 1
-            path.append((x, y))
+        for _ in range(N_LAYERS):
+            pos += 1 if np.random.rand() < bias else -1
+            path.append(pos)
 
-        st.session_state.paths.append(path)
-
-        final_bin = x - (N_COLS // 2)
-        idx = final_bin + N_LAYERS // 2
-        if 0 <= idx < len(st.session_state.bins):
-            st.session_state.bins[idx] += 1
+        st.session_state.active.append(path)
+        st.session_state.bins[path[-1]] += 1
 
         # ----- Draw board -----
-        H = N_LAYERS + 2
-        W = N_COLS + 4
-        fig = np.zeros((H, W, 3))
+        board = np.zeros((N_LAYERS+2, 2*N_LAYERS+1, 3))
 
-        # draw pegs
-        for row in range(1, N_LAYERS):
-            for col in range(N_COLS//2 - row, N_COLS//2 + row, 2):
-                if 0 <= col < W:
-                    fig[row, col] = [0.8, 0.8, 0.8]
+        # pegs
+        for r in range(N_LAYERS):
+            for c in range(N_LAYERS-r, N_LAYERS+r+1, 2):
+                board[r, c] = [0.7, 0.7, 0.7]
 
-        # draw last 200 paths
-        for pth in st.session_state.paths[-200:]:
-            for (px, py) in pth:
-                if 0 <= py < H and 0 <= px < W:
-                    fig[py, px] = [1, 0.3, 0.3]
+        # balls
+        for pth in st.session_state.active[-200:]:
+            for y, x in enumerate(pth):
+                board[y, x] = [1, 0.3, 0.3]
 
-        board_ph.image(upscale(fig, 6), clamp=True)
+        board_ph.image(np.kron(board, np.ones((6,6,1))), clamp=True)
 
         # ----- Histogram + theory -----
         xs = np.arange(len(st.session_state.bins))
         df = pd.DataFrame({"Bin": xs, "Count": st.session_state.bins})
 
-        theo_x, theo = theoretical_curve(N_LAYERS, bias)
+        k, theo = binomial_curve(N_LAYERS, bias)
         theo = theo * df["Count"].max()
 
         df_theo = pd.DataFrame({
-            "Bin": theo_x + xs.mean() - theo_x.mean(),
+            "Bin": k + xs.mean() - k.mean(),
             "Count": theo
         })
 
