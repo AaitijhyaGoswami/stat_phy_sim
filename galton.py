@@ -42,12 +42,7 @@ if run:
         positions.append(x)
         paths.append((path_x, path_y))
 
-    # bins
-    bins = np.zeros(N_LAYERS+1)
-    for p in positions:
-        idx = int(round(p + N_LAYERS/2))
-        if 0 <= idx < len(bins):
-            bins[idx] += 1
+    positions = np.array(positions)
 
     # ---------------- Peg Geometry ----------------
     peg_x, peg_y = [], []
@@ -66,7 +61,7 @@ if run:
         name="Pegs"
     ))
 
-    # draw only last 200 paths for clarity
+    # draw last 200 paths for clarity
     for px, py in paths[-200:]:
         fig_board.add_trace(go.Scatter(
             x=px, y=py,
@@ -84,20 +79,25 @@ if run:
 
     st.plotly_chart(fig_board, use_container_width=True)
 
-    # ---------------- Histogram + Theory ----------------
-    k = np.arange(len(bins))
-    theo = np.array([comb(N_LAYERS, i)*(bias**i)*((1-bias)**(N_LAYERS-i)) for i in k])
-    theo = theo / theo.max() * max(bins)
+    # ---------------- Dense Histogram + Gaussian ----------------
+    hist_y, hist_x = np.histogram(positions, bins=60)
+    hist_centers = (hist_x[:-1] + hist_x[1:]) / 2
+
+    mu = np.mean(positions)
+    sigma = np.std(positions)
+
+    x_cont = np.linspace(hist_centers.min(), hist_centers.max(), 300)
+    gauss = (1/(sigma*np.sqrt(2*np.pi))) * np.exp(-(x_cont-mu)**2/(2*sigma**2))
+    gauss = gauss / gauss.max() * hist_y.max()
 
     fig_hist = go.Figure()
-    fig_hist.add_bar(x=k, y=bins, name="Observed")
-    fig_hist.add_scatter(x=k, y=theo, mode="lines",
-                         name="Binomial / Gaussian",
-                         line=dict(color="red"))
+    fig_hist.add_bar(x=hist_centers, y=hist_y, name="Observed (dense)", opacity=0.7)
+    fig_hist.add_scatter(x=x_cont, y=gauss, mode="lines",
+                         name="Gaussian fit", line=dict(color="red", width=3))
 
     fig_hist.update_layout(
         title="Final Bin Distribution",
-        xaxis_title="Bin",
+        xaxis_title="Final Position",
         yaxis_title="Count",
         height=400
     )
