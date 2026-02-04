@@ -1,26 +1,24 @@
 import streamlit as st
 import numpy as np
-import pandas as pd
-import altair as alt
+import plotly.graph_objects as go
 import time
-from math import comb, sqrt, pi, exp
+from math import comb
 
 st.set_page_config(layout="wide")
 st.title("Galton Board — Central Limit Theorem")
 
 st.markdown("""
-Each row is a Bernoulli trial.  
-Each ball makes a left/right choice at every peg.  
-The accumulation of many trials converges to a **Gaussian**.
+Balls fall through pegs and randomly deflect left or right.  
+The final bin distribution converges to a **Gaussian**.
 """)
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
     st.header("Controls")
-    N_LAYERS = st.slider("Number of Peg Rows", 10, 60, 30)
-    N_BALLS = st.slider("Balls per Batch", 10, 300, 100)
-    bias = st.slider("Right Step Probability p", 0.0, 1.0, 0.5)
-    speed = st.slider("Animation Speed", 0.01, 0.15, 0.04)
+    N_LAYERS = st.slider("Peg Rows", 6, 20, 12)
+    BALLS = st.slider("Balls per Drop", 1, 50, 10)
+    bias = st.slider("Right Probability", 0.0, 1.0, 0.5)
+    speed = st.slider("Animation Speed", 0.01, 0.2, 0.05)
 
     if st.button("Reset"):
         st.session_state.init = False
@@ -30,78 +28,93 @@ with st.sidebar:
 if "init" not in st.session_state:
     st.session_state.init = False
 
-def reset():
-    st.session_state.active = []
+if not st.session_state.init:
     st.session_state.bins = np.zeros(N_LAYERS + 1, dtype=int)
+    st.session_state.paths = []
     st.session_state.init = True
 
-if not st.session_state.init:
-    reset()
+# ---------------- Peg Geometry ----------------
+peg_x, peg_y = [], []
+for row in range(N_LAYERS):
+    for col in range(row + 1):
+        peg_x.append(col - row / 2)
+        peg_y.append(-row)
 
 # ---------------- Layout ----------------
-col_board, col_hist = st.columns([1.4, 1])
-board_ph = col_board.empty()
+col_anim, col_hist = st.columns([1.5, 1])
+anim_ph = col_anim.empty()
 hist_ph = col_hist.empty()
 
 run = st.toggle("Drop Balls")
 
 # ---------------- Theory ----------------
-def binomial_curve(n, p):
+def theoretical(n, p):
     k = np.arange(n+1)
     probs = np.array([comb(n, i)*(p**i)*((1-p)**(n-i)) for i in k])
     return k, probs / probs.max()
 
 # ---------------- Simulation ----------------
 if run:
-    for _ in range(N_BALLS):
-        pos = N_LAYERS // 2
-        path = [pos]
+    for _ in range(BALLS):
+        x = 0
+        y = 0
+        path_x = [x]
+        path_y = [y]
 
-        for _ in range(N_LAYERS):
-            pos += 1 if np.random.rand() < bias else -1
-            path.append(pos)
+        for layer in range(N_LAYERS):
+            if np.random.rand() < bias:
+                x += 0.5
+            else:
+                x -= 0.5
+            y -= 1
+            path_x.append(x)
+            path_y.append(y)
 
-        st.session_state.active.append(path)
-        st.session_state.bins[path[-1]] += 1
+        st.session_state.paths.append((path_x, path_y))
+        bin_idx = int(round(x + N_LAYERS/2))
+        st.session_state.bins[bin_idx] += 1
 
-        # ----- Draw board -----
-        board = np.zeros((N_LAYERS+2, 2*N_LAYERS+1, 3))
+        # ----- Animate -----
+        fig = go.Figure()
 
         # pegs
-        for r in range(N_LAYERS):
-            for c in range(N_LAYERS-r, N_LAYERS+r+1, 2):
-                board[r, c] = [0.7, 0.7, 0.7]
+        fig.add_trace(go.Scatter(
+            x=peg_x, y=peg_y,
+            mode="markers",
+            marker=dict(size=10, color="black"),
+            name="Pegs"
+        ))
 
         # balls
-        for pth in st.session_state.active[-200:]:
-            for y, x in enumerate(pth):
-                board[y, x] = [1, 0.3, 0.3]
+        for px, py in st.session_state.paths[-20:]:
+            fig.add_trace(go.Scatter(
+                x=px, y=py,
+                mode="lines+markers",
+                line=dict(color="red"),
+                marker=dict(size=6),
+                showlegend=False
+            ))
 
-        board_ph.image(np.kron(board, np.ones((6,6,1))), clamp=True)
+        fig.update_layout(
+            xaxis=dict(range=[-N_LAYERS/1.5, N_LAYERS/1.5], showgrid=False, zeroline=False),
+            yaxis=dict(range=[-N_LAYERS-2, 1], showgrid=False, zeroline=False),
+            height=500,
+            title="Galton Board"
+        )
+
+        anim_ph.plotly_chart(fig, use_container_width=True)
 
         # ----- Histogram + theory -----
-        xs = np.arange(len(st.session_state.bins))
-        df = pd.DataFrame({"Bin": xs, "Count": st.session_state.bins})
+        k = np.arange(len(st.session_state.bins))
+        df = {"Bin": k, "Count": st.session_state.bins}
 
-        k, theo = binomial_curve(N_LAYERS, bias)
-        theo = theo * df["Count"].max()
+        k_t, th = theoretical(N_LAYERS, bias)
+        th = th * max(st.session_state.bins.max(), 1)
 
-        df_theo = pd.DataFrame({
-            "Bin": k + xs.mean() - k.mean(),
-            "Count": theo
-        })
+        fig2 = go.Figure()
+        fig2.add_bar(x=k, y=st.session_state.bins, name="Observed")
+        fig2.add_scatter(x=k_t, y=th, mode="lines", name="Theory", line=dict(color="red"))
 
-        bars = alt.Chart(df).mark_bar(color="#6699cc").encode(
-            x="Bin:O", y="Count"
-        )
-
-        line = alt.Chart(df_theo).mark_line(color="red").encode(
-            x="Bin:O", y="Count"
-        )
-
-        hist_ph.altair_chart(
-            (bars + line).properties(title="Final Bin Distribution"),
-            use_container_width=True
-        )
+        hist_ph.plotly_chart(fig2, use_container_width=True)
 
         time.sleep(speed)
