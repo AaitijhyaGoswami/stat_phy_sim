@@ -14,28 +14,42 @@ After many trials, the final bin distribution converges to a **Gaussian**.
 # ---------------- Sidebar ----------------
 with st.sidebar:
     st.header("Controls")
-    N_LAYERS = st.slider("Peg Rows", 6, 30, 12)
-    N_BALLS = st.slider("Number of Balls", 10, 5000, 500)
+    N_LAYERS = st.slider("Peg Rows", 6, 30, 15)
+    N_BALLS = st.slider("Number of Balls", 100, 20000, 5000, step=500)
     bias = st.slider("Right Step Probability", 0.0, 1.0, 0.5)
-
     run = st.button("Run Simulation")
 
 # ---------------- Simulation ----------------
 if run:
     positions = []
-    for _ in range(N_BALLS):
-        pos = 0
-        for _ in range(N_LAYERS):
-            pos += 1 if np.random.rand() < bias else -1
-        positions.append(pos)
+    paths = []
 
+    for _ in range(N_BALLS):
+        x = 0
+        y = 0
+        path_x = [x]
+        path_y = [y]
+
+        for _ in range(N_LAYERS):
+            if np.random.rand() < bias:
+                x += 1
+            else:
+                x -= 1
+            y -= 1
+            path_x.append(x)
+            path_y.append(y)
+
+        positions.append(x)
+        paths.append((path_x, path_y))
+
+    # bins
     bins = np.zeros(N_LAYERS+1)
     for p in positions:
         idx = int(round(p + N_LAYERS/2))
         if 0 <= idx < len(bins):
             bins[idx] += 1
 
-    # ---------------- Board Geometry ----------------
+    # ---------------- Peg Geometry ----------------
     peg_x, peg_y = [], []
     for row in range(N_LAYERS):
         for col in range(row + 1):
@@ -44,6 +58,7 @@ if run:
 
     # ---------------- Board Plot ----------------
     fig_board = go.Figure()
+
     fig_board.add_trace(go.Scatter(
         x=peg_x, y=peg_y,
         mode="markers",
@@ -51,8 +66,17 @@ if run:
         name="Pegs"
     ))
 
+    # draw only last 200 paths for clarity
+    for px, py in paths[-200:]:
+        fig_board.add_trace(go.Scatter(
+            x=px, y=py,
+            mode="lines",
+            line=dict(color="red"),
+            showlegend=False
+        ))
+
     fig_board.update_layout(
-        title="Galton Board Peg Layout",
+        title="Galton Board with Ball Trajectories",
         xaxis=dict(showgrid=False, zeroline=False),
         yaxis=dict(showgrid=False, zeroline=False),
         height=500
@@ -67,7 +91,8 @@ if run:
 
     fig_hist = go.Figure()
     fig_hist.add_bar(x=k, y=bins, name="Observed")
-    fig_hist.add_scatter(x=k, y=theo, mode="lines", name="Binomial / Gaussian",
+    fig_hist.add_scatter(x=k, y=theo, mode="lines",
+                         name="Binomial / Gaussian",
                          line=dict(color="red"))
 
     fig_hist.update_layout(
