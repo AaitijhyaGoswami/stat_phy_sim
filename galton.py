@@ -1,13 +1,13 @@
 import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from math import comb
 
 st.set_page_config(layout="wide")
 st.title("Galton Board — Central Limit Theorem")
 
 st.markdown("""
-Each ball passes through rows of pegs, randomly deflecting left or right.  
+Balls pass through rows of pegs and randomly deflect left or right.  
 After many trials, the final bin distribution converges to a **Gaussian**.
 """)
 
@@ -35,18 +35,46 @@ if run:
         if 0 <= idx < len(bins):
             bins[idx] += 1
 
-    # ---------------- Plot ----------------
-    fig, ax = plt.subplots(figsize=(8,5))
-    ax.bar(range(len(bins)), bins, alpha=0.7, label="Observed")
+    # ---------------- Board Geometry ----------------
+    peg_x, peg_y = [], []
+    for row in range(N_LAYERS):
+        for col in range(row + 1):
+            peg_x.append(col - row/2)
+            peg_y.append(-row)
 
-    k = np.arange(N_LAYERS+1)
+    # ---------------- Board Plot ----------------
+    fig_board = go.Figure()
+    fig_board.add_trace(go.Scatter(
+        x=peg_x, y=peg_y,
+        mode="markers",
+        marker=dict(size=8, color="black"),
+        name="Pegs"
+    ))
+
+    fig_board.update_layout(
+        title="Galton Board Peg Layout",
+        xaxis=dict(showgrid=False, zeroline=False),
+        yaxis=dict(showgrid=False, zeroline=False),
+        height=500
+    )
+
+    st.plotly_chart(fig_board, use_container_width=True)
+
+    # ---------------- Histogram + Theory ----------------
+    k = np.arange(len(bins))
     theo = np.array([comb(N_LAYERS, i)*(bias**i)*((1-bias)**(N_LAYERS-i)) for i in k])
     theo = theo / theo.max() * max(bins)
-    ax.plot(k, theo, 'r-', lw=2, label="Binomial / Gaussian")
 
-    ax.set_title("Final Bin Distribution")
-    ax.set_xlabel("Bin")
-    ax.set_ylabel("Count")
-    ax.legend()
+    fig_hist = go.Figure()
+    fig_hist.add_bar(x=k, y=bins, name="Observed")
+    fig_hist.add_scatter(x=k, y=theo, mode="lines", name="Binomial / Gaussian",
+                         line=dict(color="red"))
 
-    st.pyplot(fig)
+    fig_hist.update_layout(
+        title="Final Bin Distribution",
+        xaxis_title="Bin",
+        yaxis_title="Count",
+        height=400
+    )
+
+    st.plotly_chart(fig_hist, use_container_width=True)
